@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+      "module": "NodeNext",
+      "moduleResolution": "nodenext",
+      "baseUrl": "src",
+      "outDir": "dist",
+      "sourceMap": true,
+      "noImplicitAny": true,
+      "types": ["node", "express"],
+      "typeRoots": ["./src/types", "./node_modules/@types"],
+      "skipLibCheck": true
+    },
+    "include": ["src/**/*", "src/types/index.d.ts"]
+  }
+  
