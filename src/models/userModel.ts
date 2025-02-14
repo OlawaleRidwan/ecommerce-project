@@ -11,15 +11,30 @@ const UserSchema = new mongoose.Schema({
         type: String,
         trim: true,
         unique: [true, 'Email must be unique'],
-        minLength: [6,'Email must have at least 5 characters'],
         lowercase: true,
+        sparse: true, // ✅ Allows multiple `null` values
+        default: "",  // Ensures phone_number is an empty string if not provided
+        validate: {
+            validator: function (value: string) {
+                return value === "" || true
+            },
+            message: "Email number must have at least 6-7"
+        }
     },
     phone_number: {
-        type: Number,
+        type: String,
         trim: true,
-        unique: [true, 'Email must be unique'],
-        minLength: [11,'Email must have 5 characters'],
-        lowercase: true,
+        unique: [true, 'phone number must be unique'],
+        sparse: true, // ✅ Allows multiple `null` values
+        default: "",   // Ensures phone_number is an empty string if not provided
+        validate: {
+            validator: function (value: string) {
+                return value === "" || /^[0-9]{10,11}$/.test(value); 
+            },
+            message: "Phone number must have 10-11 digits."
+        }
+        
+
     },
     password: {
         type: String,

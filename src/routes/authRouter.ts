@@ -10,9 +10,9 @@ router.patch('/send-verification-code', identifier,sendVerificationCode);
 router.patch('/verify-verification-code',identifier,verifyVerificationCode);
 router.patch('/change-password',identifier,changePassword);
 router.patch('/send-forgot-password-code',sendForgotPasswordCode);
-router.patch('/verify-forgot-password-code',verifyForgotPasswordCode);
+router.patch('/verify-forgot-password',verifyForgotPasswordCode);
 
-// router.post('/signup', (req, res) => {
+// router.post('/signup', (req, rescode) => {
 //     signup(req, res); // Same for the login handler
 // })
 // router.post('/signin', (req, res) => {
