@@ -93,7 +93,6 @@ export const changePasswordSchema = Joi.object({
       .max(50)
       .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
       .message("Password must contain at least one uppercase, one lowercase, one number, and one special character")
-      .required()
       .messages({
         "string.empty": "Password is required",
         "string.min": "Password must be at least 8 characters",
@@ -104,13 +103,15 @@ export const changePasswordSchema = Joi.object({
       .max(50)
       .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
       .message("Password must contain at least one uppercase, one lowercase, one number, and one special character")
-      .required()
       .messages({
         "string.empty": "Password is required",
         "string.min": "Password must be at least 8 characters",
         "string.max": "Password must not exceed 50 characters",
-      })
-})
+      }),
+      firstName: Joi.string().min(2).max(50).optional(),
+      lastName: Joi.string().min(2).max(50).optional(),
+      address: Joi.string().min(5).max(255).optional(),
+}).with("newPassword", "oldPassword").with("oldPassword", "newPassword");
 
 export const acceptFPCodeSchema = Joi.object({
     email_or_phone_number: Joi.alternatives().try(
