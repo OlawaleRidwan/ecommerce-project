@@ -52,6 +52,18 @@ export const signupSchema = Joi.object({
 //         .pattern( new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*d).{8,}$'))
 // }).xor("email", "phone_number");
 
+export const sendCodeSchema = Joi.object({
+
+  email_or_phone_number: Joi.alternatives().try(
+    Joi.string().email({ tlds: { allow: false } }), // Email validation
+    Joi.string().pattern(/^\d{10,15}$/).message("Invalid phone number format") // Phone number validation (10-15 digits)
+  ).required().messages({
+    "alternatives.match": "Must be a valid email or phone number",
+    "any.required": "Email or phone number is required",
+  }),
+
+})
+
 
 export const signinSchema = Joi.object({
     email_or_phone_number: Joi.alternatives().try(

@@ -11,6 +11,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/axios": "^0.9.36",
     "@types/bcryptjs": "^2.4.6",
     "@types/body-parser": "^1.19.5",
     "@types/compression": "^1.7.5",
@@ -25,8 +26,11 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@types/multer": "^1.4.12",
+    "axios": "^1.8.0",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.3",
+    "cloudinary": "^2.5.1",
     "compression": "^1.7.5",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -35,6 +39,9 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.10.0",
-    "nodemailer": "^6.10.0"
+    "multer": "^1.4.5-lts.1",
+    "ngrok": "^5.0.0-beta.2",
+    "nodemailer": "^6.10.0",
+    "sharp": "^0.33.5"
   }
 }

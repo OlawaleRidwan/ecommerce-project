@@ -1,77 +1,77 @@
 import express from 'express';
-import {UserModel, createUser,getUserById,getUsers } from '../models/userModel';
+import {UserModel } from '../models/userModel';
 import jwt,{JwtPayload} from 'jsonwebtoken'
-import { signupSchema, signinSchema, acceptCodeSchema, changePasswordSchema,acceptFPCodeSchema }  from "../middlewares/validator";
+import { signupSchema, signinSchema, acceptCodeSchema, changePasswordSchema,acceptFPCodeSchema, sendCodeSchema }  from "../middlewares/validator";
 import { doHash, doHashValidation , hmacProcess} from "../utils/hashing";
+import { signup, getOneByQuery } from '../services/authService';
 import transport  from '../middlewares/sendMail'
+import sendEmail from '../utils/sendMessage';
 
 
 
-export const signup = async(req: express.Request, res: express.Response) => {
-    const {username,email_or_phone_number, password} = req.body;
+export const Signup = async(req: express.Request, res: express.Response) => {
+    const {username,email_or_phone_number} = req.body;
     
     try {
         const {error, value} = signupSchema.validate(req.body)
         if (error) {
             res.status(401).json({success:false, message: error.details[0].message})
-        }
-
-        // const existingUser = await UserModel.findOne({ $or: [ { email }, { phone_number }] });
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}).select('+password')
-
-        if(existingUser) {
-            res.status(401).json({success: false, message: "User already exist!"})
+            return
         }
         
-        const hashedPassword = await doHash(password, 10);
-        // const newUser = new UserModel({
-        //     username,
-        //     email,
-        //     phone_number,
-        //     password: hashedPassword,
-        // })
-        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email_or_phone_number);
-        console.log(isEmail)
         console.log(email_or_phone_number)
-        const newUser = new UserModel({
-            username,
-            email: isEmail ? email_or_phone_number : undefined, 
-            phone_number: !isEmail ? email_or_phone_number : undefined,
-            password: hashedPassword,
-        });
+        const existingEmail = await getOneByQuery(
+            {$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}   
+            )
+        console.log(existingEmail)
+        if(existingEmail) {
+            res.status(401).json({success: false, message: "Email or phone already exist!"})
+            return
+        }
+
+        const existingUserName = await getOneByQuery(
+            {username}   
+            )
+        console.log(existingUserName)
+        if(existingUserName) {
+            res.status(401).json({success: false, message: "Username taken use another one"})
+            return
+        }
+
         
-        const result = await newUser.save();
-        result.password = undefined;
-        
+        const newUser = signup(req.body)
 
         res.status(201).json({
             success: true, message: "Your account has been created successfully",
-            result,
+            newUser,
         })
-
+        return
     } catch (error) {
         console.log(error)
+        res.status(501).json({
+            success: false, 
+            message: error,
+        })
     }
 } 
 
-export const signin = async (req:express.Request, res:express.Response) => {
+export const Signin = async (req:express.Request, res:express.Response) => {
     const {email_or_phone_number,password} = req.body;
     try {
-        // const {error,value} = signinSchema.validate({email,phone_number,password});
-        // if (error) {
-        //     res
-        //         .status(401)
-        //         .json({success: false, message: error.details[0].message})
-        // }
+ 
         console.log({email_or_phone_number} )
 
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}).select('+password')
+        const existingUser = await getOneByQuery(
+            {$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]} ,"+password" 
+            )
+
         console.log(existingUser)
         if(!existingUser) {
             console.log("checking for null")
           res.status(401).json({success: false, message: "User does not exist!"});
           return
         }
+
         const result = await doHashValidation(password, existingUser.password)
         if (!result) {
             res
@@ -103,6 +103,10 @@ export const signin = async (req:express.Request, res:express.Response) => {
     }   
     catch(error) {
         console.log(error)
+        res.status(501).json({
+            success: false, 
+            message: error,
+        })
     }
 }
 
@@ -111,40 +115,43 @@ export const signout= async (req: express.Request, res:express.Response) => {
     .clearCookie('Authorization')
     .status(200)
     .json({sucess: true, message: 'logged out successfully'})
+    return
 }
 
 export const sendVerificationCode = async (req: express.Request,res: express.Response) => {
-    const {email_or_phone_number} = req.body;
+    
     try {
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]});
-        console.log(1)
+        const {email_or_phone_number} = req.body;
+        console.log(email_or_phone_number)
+        const {error,value} = sendCodeSchema.validate({email_or_phone_number});
+        if (error) {
+            res
+                .status(401)
+                .json({success: false, message: error.details[0].message})
+                return
+        }
+        const existingUser = await getOneByQuery(
+            {$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]} ,"+password" 
+            )
+        console.log("Existing User: ",existingUser)
         if(!existingUser) {
             res
             .status(404)
             .json({success: false, message: "User does not exist!"});
-        
+            return
         }
-        console.log(2)
-        if(existingUser.verified) {
+        console.log("Verified: ", existingUser.verified)
+        if(existingUser.verified==true) {
             res
             .status(404)
             .json({success: false, message: "You are already verified!"});
+            return
         }
         console.log(3)
-        transport.verify(function (error, success) {
-            if (error) {
-                console.log("SMTP Connection Error:", error);
-            } else {
-                console.log("SMTP Connection Verified");
-            }
-        });
         const codeValue = Math.floor(Math.random() * 1000000).toString()
-        let info = await transport.sendMail({
-            from: process.env.NODE_CODE_SENDING_EMAIL_ADDRESS,
-            to: existingUser.email,
-            subject: 'verification code',
-            html: '<h1>' + codeValue + '</h1>'
-        })
+        let message = `Here is your verification code ${codeValue}`
+        let info = await sendEmail(existingUser.email,existingUser.username,message)
+        
         console.log(4,
             info.accepted[0], existingUser.email,
             info.accepted[0] === existingUser.email
@@ -158,13 +165,20 @@ export const sendVerificationCode = async (req: express.Request,res: express.Res
             existingUser.verificationCodeValidation = Date.now()
             await existingUser.save()
             res.status(200).json({success: true, message: 'Code Sent'})
+            return
         }
         else {
         res.status(400).json({success: false, message: 'Code Sent failed'})
+        return
         }
         console.log(5)
     } catch (error) {
          console.log(error)
+         res.status(501).json({
+            success: false, 
+            message: error,
+        })
+        return
     }
 }
 
@@ -179,15 +193,20 @@ export const verifyVerificationCode = async (req: express.Request,res:express.Re
                 .json({success: false, message: error.details[0].message})
         }
         const codeValue = providedCode.toString();
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}).select("verificationCode verificationCodeValidation");
+        const existingUser = await getOneByQuery(
+            {$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}, "verificationCode verificationCodeValidation"   
+            )
+        
         if(!existingUser) {
             res
             .status(401)
             .json({success: false, message: "User does not exist!"});
+            return
         }
 
         if (existingUser.verified) {
             res.status(400).json({success: false, message: "you are already verified"});
+            return
         }
         console.log(
             existingUser.verificationCode, existingUser.verificationCodeValidation,
@@ -217,54 +236,20 @@ export const verifyVerificationCode = async (req: express.Request,res:express.Re
             res
             .status(200)
             .json({success: true, message: 'Your account has been verified'});
+            return
         }
         
 
     } catch (error) {
         console.log(error);
+        res.status(501).json({
+            success: false, 
+            message: error,
+        })
+        return
     }
 };
 
-// export const changePassword = async(req: express.Request,res: express.Response)=> {
-//     const { userId, verified } = req.user 
-//     // as JwtPayload & { userId: string; verified: boolean };
-//     console.log(userId,verified)
-//     const {firstName,lastName,address,oldPassword, newPassword} = req.body;
-//     try {
-//         const {error,value} = changePasswordSchema.validate(req.body);
-//         if (error) {
-//             res
-//                 .status(401)
-//                 .json({success: false, message: error.details[0].message})
-//         }  
-//         if (!verified) {
-//             res
-//             .status(403)
-//             .json({success: false, message: 'You are not a verified user'});
-//         } 
-//         const existingUser = await UserModel.findOne({_id: userId}).select('password');   
-//         if (!existingUser) {
-//             res
-//             .status(401)
-//             .json({success: false, message: 'User does not exists!'})
-
-//         }
-//         const result = await doHashValidation(oldPassword,existingUser.password)
-//         if (!result) {
-//             res
-//             .status(401)
-//             .json({success: false, message: 'Incorrect Old password!'});
-//         }
-//         const hashedPassword = await doHash(newPassword,10);
-//         existingUser.password = hashedPassword;
-//         await existingUser.save();
-//         res
-//             .status(200)
-//             .json({ success: true, message: 'Password updated!'});
-//     } catch(error) {
-//         console.log(error);
-//     }
-// }
 
 export const changeUserDetails = async(req: express.Request, res: express.Response) => { 
     const { userId, verified } = req.user;
@@ -289,7 +274,7 @@ export const changeUserDetails = async(req: express.Request, res: express.Respon
                 return
         }
 
-        const existingUser = await UserModel.findOne({ _id: userId }).select('password firstName email lastName address');
+        const existingUser = await getOneByQuery({_id: userId}, "password firstName email lastName address")
         if (!existingUser) {
             res
                 .status(401)
@@ -336,7 +321,16 @@ export const changeUserDetails = async(req: express.Request, res: express.Respon
 export const sendForgotPasswordCode = async (req: express.Request,res: express.Response) => {
     const {email_or_phone_number} = req.body;
     try {
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]});
+        console.log(email_or_phone_number)
+
+        const {error,value} = sendCodeSchema.validate({email_or_phone_number});
+        if (error) {
+            res
+                .status(401)
+                .json({success: false, message: error.details[0].message})
+                return
+        }
+        const existingUser = await getOneByQuery({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]})
         if(!existingUser) {
             res
             .status(404)
@@ -344,22 +338,10 @@ export const sendForgotPasswordCode = async (req: express.Request,res: express.R
         
         }
 
-        transport.verify(function (error, success) {
-            if (error) {
-                console.log("SMTP Connection Error:", error);
-            } else {
-                console.log("SMTP Connection Verified");
-            }
-        });
-
         const codeValue = Math.floor(Math.random() * 1000000).toString()
         console.log(existingUser.email)
-        let info = await transport.sendMail({
-            from: process.env.NODE_CODE_SENDING_EMAIL_ADDRESS,
-            to: existingUser.email,
-            subject: 'Forgot password code',
-            html: '<h1>' + codeValue + '</h1>'
-        })
+        let message = `Here is your forgot password code ${codeValue}`
+        let info = await sendEmail(existingUser.email,existingUser.username,message)
  
         if(info.accepted[0] === existingUser.email) {
             const hashedCodeValue = hmacProcess(codeValue, process.env.
@@ -367,15 +349,23 @@ export const sendForgotPasswordCode = async (req: express.Request,res: express.R
             console.log({ hashedCodeValue })
             existingUser.forgotPasswordCode = hashedCodeValue;
             existingUser.forgotPasswordCodeValidation = Date.now()
-            await existingUser.save()
+            const savedDetails = await existingUser.save()
+            console.log(savedDetails)
             res.status(200).json({success: true, message: 'Code Sent'})
+            return
         }
         else{
         res.status(400).json({success: false, message: 'Code Sent failed'})
+        return
         }
         console.log(5)
     } catch (error) {
          console.log(error)
+         res.status(501).json({
+            success: false, 
+            message: error,
+        })
+        return
     }
 }
 
@@ -388,15 +378,19 @@ export const verifyForgotPasswordCode = async (req:express.Request,res: express.
             res
                 .status(401)
                 .json({success: false, message: error.details[0].message})
+                return
         }
         const codeValue = providedCode.toString();
-        const existingUser = await UserModel.findOne({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]}).select(
-            "forgotPasswordCode forgotPasswordCodeValidation");
+        const existingUser = await getOneByQuery({$or: [{email: email_or_phone_number}, {phone_number: email_or_phone_number}]},
+            "forgotPasswordCode forgotPasswordCodeValidation"
+        );
+        
+        console.log(existingUser)
         if(!existingUser) {
-            res
-            .status(401)
-            .json({success: false, message: "User does not exist!"});
-            return
+        res
+        .status(401)
+        .json({success: false, message: "User does not exist!"});
+        return
         }
         
         console.log (
@@ -430,12 +424,19 @@ export const verifyForgotPasswordCode = async (req:express.Request,res: express.
             res
             .status(200)
             .json({success: true, message: 'Password updated'});
+            return
         }
         else{ 
         res.status(400).json({success:false, message: 'unexpected occured!'})
+        return
         }
 
     } catch (error) {
         console.log(error);
+        res.status(501).json({
+            success: false, 
+            message: error,
+        })
+        return
     }
 };
