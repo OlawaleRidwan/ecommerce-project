@@ -2,7 +2,9 @@ import { Request, Response } from "express";
 import ProductModel, { IProduct } from "../models/productModel";
 import { createProductSchema,updateProductSchema } from "../middlewares/productValidator";
 import mongoose from "mongoose";
+import redisClient from "../utils/redisClient";
 // Create a new product
+
 export const createProduct = async (userId: string, body: IProduct, cloudinaryUrls?: any) => {
   try {
 
@@ -20,10 +22,7 @@ export const createProduct = async (userId: string, body: IProduct, cloudinaryUr
     const {name,price, quantity,description,color,size,category} = body;
     const totalPrice: number = Number(price) + Number(0.05 * price)
 
-    
     // const existingProduct = await ProductModel.findOne({user: userId,name }).select('name')
-
-
     const newProduct = {
         name,
         price,
@@ -40,7 +39,18 @@ export const createProduct = async (userId: string, body: IProduct, cloudinaryUr
     const product = await ProductModel.create(newProduct);
     const savedProduct = await product.save();
 
-         return { message: "Product created successfully",product: savedProduct }
+    // Invalidate relevant caches
+
+    // Invalidate all product page caches
+    const keys = await redisClient.keys('products:page:*');
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+
+    // Invalidate the category cache 
+    await redisClient.del(`category:${category}`); // Clear category cache
+
+    return { message: "Product created successfully",product: savedProduct }
   } catch (error) {
     console.log(error)
    }
@@ -49,6 +59,15 @@ export const createProduct = async (userId: string, body: IProduct, cloudinaryUr
 // Get all products
 export const getAllProducts = async (page: number = 1, productsPerPage: number = 10) => {
   
+
+const cacheKey = `products:page:${page}`;
+
+  // Check cache first
+const cachedProducts = await redisClient.get(cacheKey);
+  if (cachedProducts) {
+    return JSON.parse(cachedProducts);
+  }
+
   try {
 
     let pageNum = 0;
@@ -57,7 +76,11 @@ export const getAllProducts = async (page: number = 1, productsPerPage: number =
         } else {
             pageNum = Number(page) -1
         }
+
     const products = await ProductModel.find().sort({createdAt: -1}).skip(pageNum * productsPerPage).limit(productsPerPage).select('-user').populate("user", "username email");
+    
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(products));
+
     return products;
   } catch (error) {
     console.log(error)
@@ -68,10 +91,20 @@ export const getAllProducts = async (page: number = 1, productsPerPage: number =
 export const getProductById = async (id: string) => {
     // const {id} = req.params;
     const objectId = new mongoose.Types.ObjectId(id);
+    const cacheKey = `product:${id}`;
+
+    // Check if product is in cache
+  const cachedProduct = await redisClient.get(cacheKey);
+  if (cachedProduct) {
+    return JSON.parse(cachedProduct);
+  }
+
     
   try {
     const product = await ProductModel.findById(objectId).populate("user", "username email");
     if (!product) throw new Error("Product not found");
+
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(product));
     return product
   } catch (error) {
     console.log(error)
@@ -113,7 +146,8 @@ export const updateProduct = async (id : string, body: Partial<IProduct>, cloudi
     if (name) product.name = name;
     if (price) {
       product.price = price;
-      product.totalPrice = Number(price) + Number( 0.05 * price);}
+      product.totalPrice = Number(price) + Number( 0.05 * price);
+    }
     if (quantity) product.quantity = quantity;
     if (description) product.description = description;
     if (color) product.color = color;
@@ -124,6 +158,12 @@ export const updateProduct = async (id : string, body: Partial<IProduct>, cloudi
     // Save updated user
     const savedProduct = await product.save();
     console.log("Great!")
+
+
+    // Invalidate cache for this product
+    await redisClient.del(`product:${id}`);
+    await redisClient.del(`category:${category}`);
+
     return savedProduct
     // return ({ message: "Product updated successfully", product: newProduct });
   } catch (error) {
@@ -138,12 +178,18 @@ export const deleteProduct = async (id: string) => {
     const objectId = new mongoose.Types.ObjectId(id);
     const product = await ProductModel.findByIdAndDelete(id);
     if (!product) throw new Error("Product not found");
+
+    // Invalidate caches
+    await redisClient.del(`product:${id}`);
+    await redisClient.del(`category:${product.category}`);
+
     return ({ message: "Product deleted successfully" });
   } catch (error) {
     console.log(error)
 
   }
 };
+
 
 // Get all products by a seller (user ID)
 export const getProductsBySeller = async (id: string) => {
@@ -173,6 +219,16 @@ export const getOneByQuery = async (filter: any) => {
 //Get all product by category
 
 export const getProductsByCategory = async (category: string, filter?: any) => {
+  
+  const cacheKey = `category:${category}`;
+
+  // Check if category products are cached
+  const cachedProducts = await redisClient.get(cacheKey);
+  if (cachedProducts) {
+    return JSON.parse(cachedProducts);
+  }
+
+  
   try {
     console.log(1234)
 
@@ -187,6 +243,8 @@ export const getProductsByCategory = async (category: string, filter?: any) => {
         throw new Error("No products found in this category")
     }
 
+       // Store in cache
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(products));
     return { success: true, products };
   } catch (error) {
     console.log(error)
@@ -212,4 +270,3 @@ export const searchProducts = async (filter: any) => {
 
   }
 };
-                                                                                                                                                                                                                                                                                                                                                                                                                    
